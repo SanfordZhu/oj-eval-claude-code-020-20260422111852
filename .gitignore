@@ -1,0 +1,6 @@
+CMakeFiles/
+CMakeCache.txt
+code
+test
+debug_test
+debug_test.c
