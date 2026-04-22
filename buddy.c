@@ -40,13 +40,9 @@ static int get_buddy_index(int index, int rank) {
 
 static void add_to_free_list(void *ptr, int rank) {
     free_block_t *block = (free_block_t *)ptr;
-    // Insert in sorted order by address to ensure lowest address is first
-    free_block_t **current = &free_lists[rank];
-    while (*current && (void *)*current < ptr) {
-        current = &(*current)->next;
-    }
-    block->next = *current;
-    *current = block;
+    // Insert at head for O(1) operation
+    block->next = free_lists[rank];
+    free_lists[rank] = block;
 }
 
 static void remove_from_free_list(void *ptr, int rank) {
@@ -76,8 +72,9 @@ int init_page(void *p, int pgcount) {
     // Initialize block ranks
     memset(block_rank, 0, sizeof(block_rank));
 
-    // Add all memory as individual pages initially
-    for (int i = 0; i < total_pages; i++) {
+    // Add all memory as individual pages initially - in reverse order
+    // so that when we allocate, we get the lowest address first
+    for (int i = total_pages - 1; i >= 0; i--) {
         void *page_ptr = get_block_ptr(i);
         add_to_free_list(page_ptr, 1);
         block_rank[i] = 1;
@@ -116,9 +113,15 @@ void *alloc_pages(int rank) {
         int buddy_index = get_buddy_index(block_index, alloc_rank - 1);
         void *buddy_ptr = get_block_ptr(buddy_index);
 
-        // Add both halves to the next lower rank
-        add_to_free_list(block, alloc_rank - 1);
-        add_to_free_list(buddy_ptr, alloc_rank - 1);
+        // Add both halves to the next lower rank - add higher address first
+        // so that lower address is allocated first
+        if (block_index < buddy_index) {
+            add_to_free_list(buddy_ptr, alloc_rank - 1);
+            add_to_free_list(block, alloc_rank - 1);
+        } else {
+            add_to_free_list(block, alloc_rank - 1);
+            add_to_free_list(buddy_ptr, alloc_rank - 1);
+        }
 
         // Update block ranks
         int half_size = 1 << (alloc_rank - 2);
@@ -204,7 +207,7 @@ int return_pages(void *p) {
         block_rank[current_index + i] = current_rank;
     }
 
-    // Add merged block to free list
+    // Add merged block to free list - add to head
     void *merged_ptr = get_block_ptr(current_index);
     add_to_free_list(merged_ptr, current_rank);
 
