@@ -40,9 +40,13 @@ static int get_buddy_index(int index, int rank) {
 
 static void add_to_free_list(void *ptr, int rank) {
     free_block_t *block = (free_block_t *)ptr;
-    // Insert at head for O(1) operation
-    block->next = free_lists[rank];
-    free_lists[rank] = block;
+    // Insert in sorted order by address to ensure lowest address is first
+    free_block_t **current = &free_lists[rank];
+    while (*current && (void *)*current < ptr) {
+        current = &(*current)->next;
+    }
+    block->next = *current;
+    *current = block;
 }
 
 static void remove_from_free_list(void *ptr, int rank) {
