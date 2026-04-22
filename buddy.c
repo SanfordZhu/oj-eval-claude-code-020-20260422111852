@@ -40,7 +40,7 @@ static int get_buddy_index(int index, int rank) {
 
 static void add_to_free_list(void *ptr, int rank) {
     free_block_t *block = (free_block_t *)ptr;
-    // Insert at head for simplicity
+    // Insert at head for O(1) operation
     block->next = free_lists[rank];
     free_lists[rank] = block;
 }
@@ -54,21 +54,6 @@ static void remove_from_free_list(void *ptr, int rank) {
         }
         current = &(*current)->next;
     }
-}
-
-// Find the lowest address block in the free list
-static void *find_lowest_block(int rank) {
-    free_block_t *current = free_lists[rank];
-    free_block_t *lowest = current;
-
-    while (current) {
-        if ((void *)current < (void *)lowest) {
-            lowest = current;
-        }
-        current = current->next;
-    }
-
-    return lowest;
 }
 
 int init_page(void *p, int pgcount) {
@@ -114,8 +99,8 @@ void *alloc_pages(int rank) {
 
     // Split larger blocks if necessary
     while (alloc_rank > rank) {
-        // Get the lowest block from the larger rank
-        free_block_t *block = find_lowest_block(alloc_rank);
+        // Get first block from the larger rank (lowest address)
+        free_block_t *block = free_lists[alloc_rank];
         if (!block) {
             return ERR_PTR(-ENOSPC);
         }
@@ -127,14 +112,9 @@ void *alloc_pages(int rank) {
         int buddy_index = get_buddy_index(block_index, alloc_rank - 1);
         void *buddy_ptr = get_block_ptr(buddy_index);
 
-        // Always add the lower address first, then higher
-        if (block_index < buddy_index) {
-            add_to_free_list(block, alloc_rank - 1);
-            add_to_free_list(buddy_ptr, alloc_rank - 1);
-        } else {
-            add_to_free_list(buddy_ptr, alloc_rank - 1);
-            add_to_free_list(block, alloc_rank - 1);
-        }
+        // Add both halves to the next lower rank
+        add_to_free_list(block, alloc_rank - 1);
+        add_to_free_list(buddy_ptr, alloc_rank - 1);
 
         // Update block ranks
         int half_size = 1 << (alloc_rank - 2);
@@ -147,8 +127,8 @@ void *alloc_pages(int rank) {
     }
 
     // Now we should have a block of the exact size
-    // Get the lowest address block
-    free_block_t *block = find_lowest_block(rank);
+    // Get first block (lowest address)
+    free_block_t *block = free_lists[rank];
     if (!block) {
         return ERR_PTR(-ENOSPC);
     }
